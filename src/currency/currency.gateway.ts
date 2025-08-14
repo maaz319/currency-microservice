@@ -80,6 +80,39 @@ export class CurrencyGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
   }
 
+  // ✅ NEW: Get all currencies via WebSocket
+  @SubscribeMessage('get-all-currencies')
+  async handleGetAllCurrencies(@ConnectedSocket() client: Socket) {
+    try {
+      const startTime = Date.now();
+      
+      // Get all currencies from Redis
+      const currencies = await this.redisService.get('currencies:all');
+      const lastSync = await this.redisService.get('last_sync');
+      
+      if (!currencies) {
+        client.emit('error', { message: 'Currency data not available' });
+        return;
+      }
+
+      const responseTime = Date.now() - startTime;
+      
+      client.emit('all-currencies-response', {
+        detail: currencies,
+        count: currencies.length,
+        lastSync,
+        responseTime,
+        cached: true,
+        timestamp: new Date().toISOString(),
+      });
+
+      this.logger.log(`All currencies request: ${currencies.length} currencies in ${responseTime}ms`);
+    } catch (error) {
+      this.logger.error('Get all currencies error:', error.message);
+      client.emit('error', { message: 'Failed to fetch all currencies' });
+    }
+  }
+
   @SubscribeMessage('get-currencies-bulk')
   async handleGetCurrenciesBulk(
     @ConnectedSocket() client: Socket,
@@ -102,6 +135,36 @@ export class CurrencyGateway implements OnGatewayConnection, OnGatewayDisconnect
       this.logger.log(`Bulk request for ${data.currencies.length} currencies: ${responseTime}ms`);
     } catch (error) {
       client.emit('error', { message: 'Failed to fetch bulk currencies' });
+    }
+  }
+
+  // ✅ NEW: Get health status via WebSocket
+  @SubscribeMessage('get-health-status')
+  async handleGetHealthStatus(@ConnectedSocket() client: Socket) {
+    try {
+      const startTime = Date.now();
+      
+      const lastSync = await this.redisService.get('last_sync');
+      const allCurrencies = await this.redisService.get('currencies:all');
+      const connectionStats = this.getConnectionStats();
+      
+      const responseTime = Date.now() - startTime;
+      
+      client.emit('health-status-response', {
+        status: 'healthy',
+        lastSync,
+        currenciesCount: allCurrencies ? allCurrencies.length : 0,
+        cacheActive: !!allCurrencies,
+        redisConnected: this.redisService.client.isReady,
+        websocket: connectionStats,
+        responseTime,
+        timestamp: new Date().toISOString(),
+      });
+
+      this.logger.log(`Health status request: ${responseTime}ms`);
+    } catch (error) {
+      this.logger.error('Health status error:', error.message);
+      client.emit('error', { message: 'Failed to get health status' });
     }
   }
 
