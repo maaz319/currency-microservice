@@ -1,25 +1,35 @@
 # Multi-stage build for optimized production image
 FROM node:18-alpine AS builder
 
+# Enable corepack for pnpm support
+RUN corepack enable
+
+# Set up pnpm environment
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json pnpm-lock.yaml ./
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+# ✅ Use pnpm instead of npm ci
+RUN pnpm install --frozen-lockfile --prod
 
 # Copy source code
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN pnpm run build
 
 # Production image
 FROM node:18-alpine AS production
 
 # Install system dependencies for health checks
 RUN apk add --no-cache dumb-init curl
+
+# Enable corepack in production stage too
+RUN corepack enable
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -30,7 +40,7 @@ WORKDIR /app
 # Copy built application from builder stage
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nestjs:nodejs /app/package*.json ./
+COPY --from=builder --chown=nestjs:nodejs /app/package.json ./
 
 # Switch to non-root user
 USER nestjs
