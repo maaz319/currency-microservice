@@ -2,6 +2,10 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 
+if (!global.crypto) {
+  global.crypto = require('crypto').webcrypto || require('crypto');
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
